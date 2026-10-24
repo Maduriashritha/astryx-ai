@@ -50,6 +50,40 @@ function parseAudit(text: string) {
   };
 }
 
+function localFallbackAudit(code: string) {
+  const findings: AuditFinding[] = [];
+  const lines = code.split(/\r?\n/);
+  const addFinding = (line: number, title: string, severity: AuditFinding["severity"], description: string, cwe: string, patch: string) => {
+    findings.push({ id: String(findings.length + 1), title, severity, description, line, cwe, patch });
+  };
+  lines.forEach((sourceLine, index) => {
+    const lineNumber = index + 1;
+    if (/\b(?:query|sql)\s*[:=].*(?:\$\{|\+\s*\w+)/i.test(sourceLine) && /\b(?:select|insert|update|delete)\b/i.test(sourceLine)) {
+      addFinding(lineNumber, "Possible SQL injection", "High", "SQL text appears to include a value through interpolation or concatenation. Use a parameterized query so user input stays data.", "CWE-89", "Use a parameterized query and pass user-controlled values as separate parameters.");
+    }
+    if (/\b(?:exec|execSync|system|popen)\s*\([^)]*\b(?:input|request|query|params?)\b/i.test(sourceLine)) {
+      addFinding(lineNumber, "Possible command injection", "Critical", "A process execution call appears to receive user-controlled input. Avoid passing user input to a shell; use a fixed executable and validated argument list.", "CWE-78", "Replace shell command construction with a fixed executable and a validated argument array. Do not enable shell mode for user-controlled values.");
+    }
+    if (/\b(?:eval|Function)\s*\(/.test(sourceLine)) {
+      addFinding(lineNumber, "Dynamic code execution", "High", "This line evaluates dynamically constructed code, which can execute attacker-controlled input.", "CWE-94", "Replace dynamic evaluation with explicit parsing and allowlisted operations.");
+    }
+    if (/rejectUnauthorized\s*:\s*false|verify\s*=\s*False/i.test(sourceLine)) {
+      addFinding(lineNumber, "TLS certificate verification disabled", "High", "Disabling certificate verification makes encrypted connections vulnerable to interception.", "CWE-295", "Enable certificate verification and configure the trusted certificate authority instead.");
+    }
+  });
+  const score = Math.max(0, 100 - findings.reduce((total, finding) => total + (finding.severity === "Critical" ? 40 : finding.severity === "High" ? 25 : finding.severity === "Medium" ? 12 : 5), 0));
+  return {
+    score,
+    summary: findings.length
+      ? "Gemini is temporarily unavailable. Local pattern checks found " + findings.length + " possible issue(s); review them carefully because this is not a full AI analysis."
+      : "Gemini is temporarily unavailable. Local pattern checks found no known risky patterns, but this is not a full AI analysis.",
+    critical: findings.filter((finding) => finding.severity === "Critical").length,
+    high: findings.filter((finding) => finding.severity === "High").length,
+    medium: findings.filter((finding) => finding.severity === "Medium").length,
+    low: findings.filter((finding) => finding.severity === "Low").length,
+    findings,
+  };
+}
 export async function POST(req: Request) {
   let body: unknown;
   try {
@@ -119,7 +153,7 @@ export async function POST(req: Request) {
       const status = response?.status ?? 502;
       console.error("Gemini request failed", { status, message: result?.error?.message });
       if (temporarilyUnavailable || status === 429 || status === 503) {
-        return NextResponse.json({ error: "The AI service is temporarily busy. Please wait a minute and try again." }, { status: 503 });
+        return NextResponse.json(localFallbackAudit(code));
       }
       return NextResponse.json({ error: "AI analysis request failed. Check the server Gemini API configuration and try again." }, { status: 502 });
     }
