@@ -80,22 +80,45 @@ export async function POST(req: Request) {
     // Retry through Gemini 3.6 Flash when Gemini 3.8 Flash is at capacity.
     let response: Response | undefined;
     let result: any = null;
+    let temporarilyUnavailable = false;
     for (const model of ["gemini-3.8-flash", "gemini-3.6-flash"]) {
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-        signal: controller.signal,
-        body: requestBody,
-      });
-      result = await response.json().catch(() => null);
-      if (response.ok || (response.status !== 429 && response.status !== 503)) break;
+      const attemptController = new AbortController();
+      const abortAttempt = () => attemptController.abort();
+      controller.signal.addEventListener("abort", abortAttempt, { once: true });
+      const attemptTimeout = setTimeout(abortAttempt, 12_000);
+      try {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          signal: attemptController.signal,
+          body: requestBody,
+        });
+        result = await response.json().catch(() => null);
+      } catch (error) {
+        if (controller.signal.aborted) throw error;
+        temporarilyUnavailable = true;
+        console.warn("Gemini model request timed out; trying fallback", { model });
+        continue;
+      } finally {
+        clearTimeout(attemptTimeout);
+        controller.signal.removeEventListener("abort", abortAttempt);
+      }
+      if (response.ok) {
+        temporarilyUnavailable = false;
+        break;
+      }
+      if (response.status !== 429 && response.status !== 503) {
+        temporarilyUnavailable = false;
+        break;
+      }
+      temporarilyUnavailable = true;
       console.warn("Gemini model is temporarily unavailable; trying fallback", { model, status: response.status });
     }
 
     if (!response?.ok) {
       const status = response?.status ?? 502;
       console.error("Gemini request failed", { status, message: result?.error?.message });
-      if (status === 429 || status === 503) {
+      if (temporarilyUnavailable || status === 429 || status === 503) {
         return NextResponse.json({ error: "The AI service is temporarily busy. Please wait a minute and try again." }, { status: 503 });
       }
       return NextResponse.json({ error: "AI analysis request failed. Check the server Gemini API configuration and try again." }, { status: 502 });
