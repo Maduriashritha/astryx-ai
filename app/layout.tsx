@@ -7,8 +7,8 @@ const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 export const metadata: Metadata = {
-  title: 'Promptly — AI Generation Dashboard',
-  description: 'Generate, review, and track AI responses powered by Groq Llama 3.',
+  title: 'ASTryx — AI Code Reviewer & Security Linter',
+  description: 'AI-powered code review and OWASP security analysis for safer software.',
   generator: 'v0.app',
   icons: {
     icon: [
