@@ -15,7 +15,8 @@ export default function Dashboard() {
     setIsAnalyzing(true);
 
     try {
-      const res = await fetch("/api/audit", {
+      // Points directly to your /api/generate route
+      const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, language }),
