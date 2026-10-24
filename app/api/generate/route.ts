@@ -1,78 +1,62 @@
-import Groq from 'groq-sdk'
-import { NextResponse } from 'next/server'
-import { getSupabase } from '@/lib/supabase'
-import { MODEL_ID, type Generation } from '@/lib/types'
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { NextResponse } from "next/server";
 
-const MAX_PROMPT_LENGTH = 8000
-
-export async function POST(request: Request) {
-  let prompt: unknown
+export async function POST(req: Request) {
   try {
-    ;({ prompt } = await request.json())
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
-  }
+    const { code, language } = await req.json();
 
-  if (typeof prompt !== 'string' || !prompt.trim()) {
-    return NextResponse.json({ error: 'Prompt is required.' }, { status: 400 })
-  }
-  const cleanPrompt = prompt.trim()
-  if (cleanPrompt.length > MAX_PROMPT_LENGTH) {
+    if (!code || code.trim() === "") {
+      return NextResponse.json({ error: "No code provided" }, { status: 400 });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "GEMINI_API_KEY is missing on server" }, { status: 500 });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt = `You are a high-precision static code analyzer (OWASP / Snyk style).
+Analyze the following ${language || "TypeScript"} code for security vulnerabilities, bugs, or clean code issues.
+
+Code to analyze:
+\`\`\`
+${code}
+\`\`\`
+
+Return ONLY a valid, raw JSON object (no markdown formatting, no code block backticks) using this exact structure:
+{
+  "score": 70,
+  "summary": "Short 1-2 sentence overview of code security status",
+  "critical": 1,
+  "high": 0,
+  "medium": 0,
+  "low": 0,
+  "findings": [
+    {
+      "id": "1",
+      "title": "Short Issue Title",
+      "severity": "Critical",
+      "description": "Concise explanation of the vulnerability",
+      "line": 1,
+      "cwe": "CWE-89",
+      "patch": "Suggested patch or corrected code snippet"
+    }
+  ]
+}`;
+
+    const result = await model.generateContent(prompt);
+    const responseText = await result.response.text();
+    const cleanedJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+    const auditData = JSON.parse(cleanedJson);
+
+    return NextResponse.json(auditData);
+  } catch (error: any) {
+    console.error("Gemini API error:", error);
     return NextResponse.json(
-      { error: `Prompt must be under ${MAX_PROMPT_LENGTH} characters.` },
-      { status: 400 },
-    )
+      { error: error.message || "Failed to analyze code with Gemini AI" },
+      { status: 500 }
+    );
   }
-
-  if (!process.env.GROQ_API_KEY) {
-    return NextResponse.json(
-      { error: 'GROQ_API_KEY is not configured. Add it in the Vars section of project settings.' },
-      { status: 503 },
-    )
-  }
-
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-
-  let responseText: string
-  try {
-    const completion = await groq.chat.completions.create({
-      model: MODEL_ID,
-      messages: [
-        { role: 'system', content: 'You are a helpful, concise assistant.' },
-        { role: 'user', content: cleanPrompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 1024,
-    })
-    responseText = completion.choices[0]?.message?.content?.trim() ?? ''
-  } catch (error) {
-    console.error('Groq request failed:', error)
-    return NextResponse.json({ error: 'The AI model request failed. Please try again.' }, { status: 502 })
-  }
-
-  const fallback: Generation = {
-    id: crypto.randomUUID(),
-    prompt: cleanPrompt,
-    response: responseText,
-    model: MODEL_ID,
-    created_at: new Date().toISOString(),
-  }
-
-  const supabase = getSupabase()
-  if (!supabase) {
-    return NextResponse.json({ generation: fallback, saved: false })
-  }
-
-  const { data, error } = await supabase
-    .from('generations')
-    .insert({ prompt: cleanPrompt, response: responseText, model: MODEL_ID })
-    .select('id, prompt, response, model, created_at')
-    .single()
-
-  if (error) {
-    console.error('Failed to save generation:', error.message)
-    return NextResponse.json({ generation: fallback, saved: false })
-  }
-
-  return NextResponse.json({ generation: data as Generation, saved: true })
 }
