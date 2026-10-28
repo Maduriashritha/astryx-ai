@@ -29,7 +29,7 @@ Set these server-side environment variables in the Next.js hosting environment (
 | Variable | Value |
 | --- | --- |
 | `GITHUB_APP_ID` | Numeric App ID from the GitHub App settings |
-| `GITHUB_APP_PRIVATE_KEY` | Full PEM private key; literal `\\n` line breaks are accepted |
+| `GITHUB_APP_PRIVATE_KEY` | Full PEM private key; literal `\n` line breaks are accepted |
 | `GITHUB_WEBHOOK_SECRET` | The same random secret configured on the App webhook |
 | `GEMINI_API_KEY` | Server-side Gemini API key |
 | `GEMINI_MODEL` | Optional model override; defaults to `gemini-3.8-flash` |
