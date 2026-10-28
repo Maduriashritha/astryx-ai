@@ -276,8 +276,9 @@ async function processPullRequest(event: PullRequestEvent) {
   const repoId = event.repository?.id
   const pullNumber = event.pull_request?.number
   const headSha = event.pull_request?.head?.sha
-  if (!Number.isSafeInteger(installationId) || !installationId || !fullName ||
-    !Number.isSafeInteger(repoId) || !repoId || !Number.isSafeInteger(pullNumber) || !pullNumber ||
+  if (typeof installationId !== 'number' || !Number.isSafeInteger(installationId) || installationId <= 0 || !fullName ||
+    typeof repoId !== 'number' || !Number.isSafeInteger(repoId) || repoId <= 0 ||
+    typeof pullNumber !== 'number' || !Number.isSafeInteger(pullNumber) || pullNumber <= 0 ||
     !headSha || !/^[a-f0-9]{40}$/i.test(headSha)) return
 
   const token = await createInstallationToken(installationId)
