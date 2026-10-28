@@ -1,35 +1,37 @@
 # ASTryx — AI Code Reviewer & OWASP Security Linter
 
-ASTryx is a professional-grade, AI-powered developer tool that performs real-time code quality audits, OWASP Top 10 security vulnerability scans, and dynamic patch diffing.
+ASTryx is a Next.js application for AI-assisted code reviews, OWASP security analysis, and suggested patches. It uses Gemini for server-side code analysis and Supabase for optional generation history.
 
-## 🚀 Live Demo
-- **Hosted App:** [Deploying to Vercel...] *(Update this with your Vercel link after deployment)*
+## Features
 
----
+- Security findings with severity, line numbers, and mitigation suggestions.
+- A split-pane code review workspace with editable examples and suggested patches.
+- Optional Supabase-backed generation history.
+- **GitHub pull request reviews:** a signed GitHub App webhook asks Gemini to review changed code, posts inline comments, and completes the `ASTryx Security Review` check. Critical findings fail the check.
 
-## ✨ Features
-- **Interactive Split-Pane Workspace:** Dual-view editor with integrated `@monaco-editor/react`.
-- **Real-Time Security Scoring:** Visual score gauge with issue severity indicators (Critical, High, Medium, Low).
-- **OWASP Vulnerability Scanner:** Detailed security finding breakdown with line numbers, descriptions, and mitigation strategies.
-- **Side-by-Side Patch Diffing:** Visual code comparison showing original code vs. AI-suggested secure patches.
-- **Multi-Language Support:** Preset vulnerable code samples for TypeScript, Python, Go, and Rust.
+## Tech stack
 
----
+- Next.js App Router and TypeScript
+- Gemini API
+- Supabase (optional application history)
+- GitHub App webhooks and Checks/Reviews APIs for pull request reviews
 
-## 🛠️ Tech Stack
-- **Framework:** Next.js (App Router)
-- **Language:** TypeScript
-- **Styling:** Tailwind CSS + Shadcn UI
-- **Code Editor:** Monaco Editor (`@monaco-editor/react`)
-- **Hosting & Infrastructure:** Vercel (Edge CDN + Serverless API Routes)
-- **Database (Optional):** PostgreSQL (Neon.tech)
-- **AI Inference:** Google Gemini API / OpenAI API
+## Local development
 
----
+Requirements: Node.js 20+ and pnpm.
 
-## ⚡ Getting Started Locally
+```bash
+pnpm install
+pnpm dev
+```
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/Maduriashritha/astryx-security-workspace.git](https://github.com/Maduriashritha/astryx-security-workspace.git)
-   cd astryx-security-workspace
+Set `GEMINI_API_KEY` in `.env.local` to enable AI analysis. If you want application history, also configure `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`) and `SUPABASE_SERVICE_ROLE_KEY`; the service role key must remain server-side. See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) to install the GitHub App, configure webhook secrets, and require the review check before merging.
+
+## Security review setup
+
+The PR integration runs in the deployed Next.js app. Configure the GitHub App webhook at `/api/github/webhook` and set `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, and `GEMINI_API_KEY` in the hosting environment. The route verifies GitHub's HMAC signature, never executes proposed code, and does not persist submitted diffs or findings. Branch protection must require the `ASTryx Security Review` check to block merges when the check fails.
+
+## Deployment
+
+Deploy the Next.js app to a Node.js host that supports Next.js `after()` callbacks and a route function duration of up to five minutes. Configure the environment variables in the host, then set the GitHub App webhook URL to the deployed host. Configure branch protection on each protected target branch to require `ASTryx Security Review`.
+
